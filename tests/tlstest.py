@@ -44,7 +44,7 @@ except ImportError:
     from xmlrpc import client as xmlrpclib
 import ssl
 from tlslite import *
-from tlslite.constants import KeyUpdateMessageType
+from tlslite.constants import KeyUpdateMessageType, ECPointFormat
 
 try:
     from tack.structures.Tack import Tack
@@ -282,6 +282,34 @@ def clientTestCmd(argv):
     assert connection.session.cipherSuite in\
             constants.CipherSuite.ecdheEcdsaSuites
     assert isinstance(connection.session.serverCertChain, X509CertChain)
+    connection.close()
+
+    test_no += 1
+
+    print("Test {0} - client compressed/uncompressed - uncompressed, TLSv1.2".format(test_no))
+    synchro.recv(1)
+    connection = connect()
+    settings = HandshakeSettings()
+    settings.minVersion = (3, 3)
+    settings.maxVersion = (3, 3)
+    settings.eccCurves = ["secp256r1", "secp384r1", "secp521r1", "x25519", "x448"]
+    connection.handshakeClientCert(settings=settings)
+    testConnClient(connection)
+    assert connection.session.ec_point_format == ECPointFormat.uncompressed
+    connection.close()
+
+    test_no += 1
+
+    print("Test {0} - client compressed - compressed, TLSv1.2".format(test_no))
+    synchro.recv(1)
+    connection = connect()
+    settings = HandshakeSettings()
+    settings.minVersion = (3, 3)
+    settings.maxVersion = (3, 3)
+    settings.eccCurves = ["secp256r1", "secp384r1", "secp521r1", "x25519", "x448"]
+    connection.handshakeClientCert(settings=settings)
+    testConnClient(connection)
+    assert connection.session.ec_point_format == ECPointFormat.ansiX962_compressed_char2
     connection.close()
 
     test_no += 1
@@ -2162,6 +2190,37 @@ def serverTestCmd(argv):
 
     test_no += 1
 
+    print("Test {0} server uncompressed ec format - uncompressed, TLSv1.2".format(test_no))
+    synchro.send(b'R')
+    connection = connect()
+    settings = HandshakeSettings()
+    settings.minVersion = (3, 1)
+    settings.maxVersion = (3, 3)
+    settings.eccCurves = ["secp256r1", "secp384r1", "secp521r1", "x25519", "x448"]
+    settings.ec_point_formats = [ECPointFormat.uncompressed]
+    connection.handshakeServer(certChain=x509ecdsaChain,
+                            privateKey=x509ecdsaKey, settings=settings)
+    testConnServer(connection)
+    assert connection.session.ec_point_format == ECPointFormat.uncompressed
+    connection.close()
+
+    test_no += 1
+
+    print("Test {0} server compressed ec format - compressed, TLSv1.2".format(test_no))
+    synchro.send(b'R')
+    connection = connect()
+    settings = HandshakeSettings()
+    settings.minVersion = (3, 1)
+    settings.maxVersion = (3, 3)
+    settings.eccCurves = ["secp256r1", "secp384r1", "secp521r1", "x25519", "x448"]
+    connection.handshakeServer(certChain=x509ecdsaChain,
+                            privateKey=x509ecdsaKey, settings=settings)
+    testConnServer(connection)
+    assert connection.session.ec_point_format == ECPointFormat.ansiX962_compressed_char2
+    connection.close()
+
+    test_no +=1
+
     print("Test {0} - mismatched ECDSA curve, TLSv1.2".format(test_no))
     synchro.send(b'R')
     connection = connect()
@@ -3416,7 +3475,7 @@ def serverTestCmd(argv):
     assert synchro.recv(1) == b'R'
     connection.close()
 
-    test_no += 1
+    test_no +=1
 
     print("Tests {0}-{1} - XMLRPXC server".format(test_no, test_no + 2))
 
@@ -3449,6 +3508,7 @@ def serverTestCmd(argv):
 
     synchro.close()
     synchroSocket.close()
+
     test_no += 2
 
     print("Test succeeded")

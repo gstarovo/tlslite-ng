@@ -20,7 +20,7 @@ from tlslite.messages import ServerHello, ClientHello, ServerKeyExchange,\
         CertificateRequest, ClientKeyExchange
 from tlslite.constants import CipherSuite, CertificateType, AlertDescription, \
         HashAlgorithm, SignatureAlgorithm, GroupName, ECCurveType, \
-        SignatureScheme
+        SignatureScheme, ECPointFormat
 from tlslite.errors import TLSLocalAlert, TLSIllegalParameterException, \
         TLSDecryptionFailed, TLSInsufficientSecurity, TLSUnknownPSKIdentity, \
         TLSInternalError, TLSDecodeError
@@ -33,7 +33,8 @@ from tlslite.utils.cryptomath import bytesToNumber, getRandomBytes, powMod, \
 from tlslite.mathtls import makeX, makeU, makeK, goodGroupParameters
 from tlslite.handshakehashes import HandshakeHashes
 from tlslite import VerifierDB
-from tlslite.extensions import SupportedGroupsExtension, SNIExtension
+from tlslite.extensions import SupportedGroupsExtension, SNIExtension, \
+        ECPointFormatsExtension
 from tlslite.utils.ecc import getCurveByName, getPointByteSize
 from tlslite.utils.compat import a2b_hex
 import ecdsa
@@ -2523,13 +2524,13 @@ class TestRawDHKeyExchange(unittest.TestCase):
         kex = RawDHKeyExchange(None, None)
 
         with self.assertRaises(NotImplementedError):
-            kex.calc_public_value(None)
+            kex.calc_public_value(None, None)
 
     def test_calc_shared_value(self):
         kex = RawDHKeyExchange(None, None)
 
         with self.assertRaises(NotImplementedError):
-            kex.calc_shared_key(None, None)
+            kex.calc_shared_key(None, None, None)
 
 
 class TestFFDHKeyExchange(unittest.TestCase):
