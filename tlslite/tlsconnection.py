@@ -745,7 +745,6 @@ class TLSConnection(TLSRecordLayer):
             for group_name in settings.keyShares:
                 group_id = getattr(GroupName, group_name)
                 key_share = self._genKeyShareEntry(group_id, (3, 4))
-
                 shares.append(key_share)
             # if TLS 1.3 is enabled, key_share must always be sent
             # (unless only static PSK is used)
@@ -762,8 +761,9 @@ class TLSConnection(TLSRecordLayer):
         if next((cipher for cipher in cipherSuites \
                 if cipher in CipherSuite.ecdhAllSuites), None) is not None:
             groups.extend(self._curveNamesToList(settings))
-            extensions.append(ECPointFormatsExtension().\
-                              create([ECPointFormat.uncompressed]))
+            if settings.ec_point_formats:
+                extensions.append(ECPointFormatsExtension().\
+                                create(settings.ec_point_formats))
         # Advertise FFDHE groups if we have DHE ciphers
         if next((cipher for cipher in cipherSuites
                  if cipher in CipherSuite.dhAllSuites), None) is not None:
@@ -838,7 +838,7 @@ class TLSConnection(TLSRecordLayer):
                                session_id, wireCipherSuites,
                                certificateTypes, 
                                srpUsername,
-                               reqTack, nextProtos is not None, 
+                               reqTack, nextProtos is not None,
                                serverName,
                                extensions=extensions)
 
@@ -915,6 +915,7 @@ class TLSConnection(TLSRecordLayer):
 
         hello_retry = None
         ext = result.getExtension(ExtensionType.supported_versions)
+
         if result.random == TLS_1_3_HRR and ext and ext.version > (3, 3):
             self.version = ext.version
             hello_retry = result
@@ -974,7 +975,6 @@ class TLSConnection(TLSRecordLayer):
                                                   "did sent the key share "
                                                   "for"):
                         yield result
-
                 key_share = self._genKeyShareEntry(group_id, (3, 4))
 
                 # old key shares need to be removed
@@ -1855,8 +1855,8 @@ class TLSConnection(TLSRecordLayer):
                                                      cipherSuite,
                                                      clientRandom,
                                                      serverRandom)
-        self._calcPendingStates(cipherSuite, masterSecret, 
-                                clientRandom, serverRandom, 
+        self._calcPendingStates(cipherSuite, masterSecret,
+                                clientRandom, serverRandom,
                                 cipherImplementations)
 
         #Exchange ChangeCipherSpec and Finished messages
@@ -2270,8 +2270,8 @@ class TLSConnection(TLSRecordLayer):
         if clientHello.getExtension(ExtensionType.ec_point_formats):
             # even though the selected cipher may not use ECC, client may want
             # to send a CA certificate with ECDSA...
-            extensions.append(ECPointFormatsExtension().create(
-                [ECPointFormat.uncompressed]))
+            extensions.append(ECPointFormatsExtension().
+                              create(settings.ec_point_formats))
 
         # if client sent Heartbeat extension
         if clientHello.getExtension(ExtensionType.heartbeat):
@@ -2710,7 +2710,6 @@ class TLSConnection(TLSRecordLayer):
             self.ecdhCurve = selected_group
             kex = self._getKEX(selected_group, version)
             key_share = self._genKeyShareEntry(selected_group, version)
-
             try:
                 shared_sec = kex.calc_shared_key(key_share.private,
                                                  cl_key_share.key_exchange)
