@@ -416,6 +416,9 @@ class HandshakeSettings(object):
         self.macNames = list(MAC_NAMES)
         self.keyExchangeNames = list(KEY_EXCHANGE_NAMES)
         self.cipherImplementations = list(CIPHER_IMPLEMENTATIONS)
+        self.ecPointFormats = [ECPointFormat.uncompressed, 
+                               ECPointFormat.ansiX962_compressed_char2,
+                               ECPointFormat.ansiX962_compressed_prime]
 
     @staticmethod
     def _sanityCheckKeySizes(other):

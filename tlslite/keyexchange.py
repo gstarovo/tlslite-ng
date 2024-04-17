@@ -731,6 +731,7 @@ class AECDHKeyExchange(KeyExchange):
             raise TLSDecodeError("No key share")
 
         kex = ECDHKeyExchange(self.group_id, self.serverHello.server_version)
+
         ext_supported = [ECPointFormat.uncompressed]
         ext_c = self.clientHello.getExtension(ExtensionType.ec_point_formats)
         ext_s = self.serverHello.getExtension(ExtensionType.ec_point_formats)
@@ -757,6 +758,7 @@ class AECDHKeyExchange(KeyExchange):
         kex = ECDHKeyExchange(serverKeyExchange.named_curve,
                               self.serverHello.server_version)
         ecdhXc = kex.get_random_private_key()
+
         ext_negotiated = ECPointFormat.uncompressed
         ext_supported = [ECPointFormat.uncompressed]
         ext_c = self.clientHello.getExtension(ExtensionType.ec_point_formats)
@@ -766,6 +768,7 @@ class AECDHKeyExchange(KeyExchange):
             if not ext_supported:
                 raise TLSDecodeError("No negotiated ec point extension.")
             ext_negotiated = ext_supported[0]
+
         self.ecdhYc = kex.calc_public_value(ecdhXc, ext_negotiated)
         return kex.calc_shared_key(ecdhXc, ecdh_Ys, ext_supported)
 
@@ -1036,6 +1039,7 @@ class ECDHKeyExchange(RawDHKeyExchange):
             return x448, bytearray(X448_G), X448_ORDER_SIZE
 
     @staticmethod
+
     def _get_point_format(ext):
         """Get extension name from the numeric value."""
         transform = {ECPointFormat.uncompressed: 'uncompressed',
@@ -1056,6 +1060,7 @@ class ECDHKeyExchange(RawDHKeyExchange):
         else:
             curve = getCurveByName(GroupName.toStr(self.group))
             point = curve.generator * private
+
             return bytearray(point.to_bytes(encoding=point_fmt))
 
     def calc_shared_key(self, private, peer_share,

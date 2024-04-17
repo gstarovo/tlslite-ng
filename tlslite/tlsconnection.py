@@ -1175,12 +1175,12 @@ class TLSConnection(TLSRecordLayer):
         return ECDHKeyExchange(group, version)
 
     @classmethod
-    def _genKeyShareEntry(cls, group, version):
+    def _genKeyShareEntry(cls, group, version, ext_negotiated):
         """Generate KeyShareEntry object from randomly selected private value.
         """
         kex = cls._getKEX(group, version)
         private = kex.get_random_private_key()
-        share = kex.calc_public_value(private)
+        share = kex.calc_public_value(private, ext_negotiated)
         return KeyShareEntry().create(group, share, private)
 
     @staticmethod
@@ -1212,9 +1212,17 @@ class TLSConnection(TLSRecordLayer):
                 raise TLSIllegalParameterException("Server selected not "
                                                    "advertised group.")
             kex = self._getKEX(sr_kex.group, self.version)
-
+            ext_supported = set([0])
+            ext_c = clientHello.getExtension(ExtensionType.ec_point_formats)
+            ext_s = serverHello.getExtension(ExtensionType.ec_point_formats)
+            if ext_c and ext_s:
+                ext_supported = set()
+                for ext in ext_c.formats:
+                    if ext in ext_s.formats:
+                        ext_supported.add(ext)
             shared_sec = kex.calc_shared_key(cl_kex.private,
-                                             sr_kex.key_exchange)
+                                             sr_kex.key_exchange,
+                                             ext_supported)
         else:
             shared_sec = bytearray(prf_size)
 
@@ -2712,7 +2720,8 @@ class TLSConnection(TLSRecordLayer):
             key_share = self._genKeyShareEntry(selected_group, version)
             try:
                 shared_sec = kex.calc_shared_key(key_share.private,
-                                                 cl_key_share.key_exchange)
+                                                 cl_key_share.key_exchange,
+                                                 ext_supported)
             except TLSIllegalParameterException as alert:
                 for result in self._sendError(
                         AlertDescription.illegal_parameter,
