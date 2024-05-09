@@ -709,10 +709,11 @@ class AECDHKeyExchange(KeyExchange):
         ext_c = self.clientHello.getExtension(ExtensionType.ec_point_formats)
         ext_s = self.serverHello.getExtension(ExtensionType.ec_point_formats)
         if ext_c and ext_s:
-            for ext in ext_c.formats:
-                if ext in ext_s.formats:
-                    ext_negotiated = ext
-                    break
+            try:
+                ext_negotiated = next((i for i in ext_c.formats \
+                                       if i in ext_s.formats))
+            except StopIteration:
+                raise TLSIllegalParameterException("No common EC point format")
 
         ecdhYs = kex.calc_public_value(self.ecdhXs, ext_negotiated)
 
@@ -739,6 +740,8 @@ class AECDHKeyExchange(KeyExchange):
             ext_supported = [
                 ext for ext in ext_c.formats if ext in ext_s.formats
                 ]
+            if not ext_supported:
+                raise TLSIllegalParameterException("No common EC point format")
         return kex.calc_shared_key(self.ecdhXs, ecdhYc, ext_supported)
 
     def processServerKeyExchange(self, srvPublicKey, serverKeyExchange):
@@ -762,8 +765,11 @@ class AECDHKeyExchange(KeyExchange):
         ext_c = self.clientHello.getExtension(ExtensionType.ec_point_formats)
         ext_s = self.serverHello.getExtension(ExtensionType.ec_point_formats)
         if ext_c and ext_s:
-            ext_supported = [i for i in ext_c.formats if i in ext_s.formats]
-            ext_negotiated = ext_supported[0]
+            try:
+                ext_supported = [i for i in ext_c.formats if i in ext_s.formats]
+                ext_negotiated = ext_supported[0]
+            except IndexError:
+                raise TLSIllegalParameterException("No common EC point format")
 
         self.ecdhYc = kex.calc_public_value(ecdhXc, ext_negotiated)
         return kex.calc_shared_key(ecdhXc, ecdh_Ys, ext_supported)

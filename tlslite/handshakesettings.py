@@ -61,8 +61,7 @@ KNOWN_VERSIONS = ((3, 0), (3, 1), (3, 2), (3, 3), (3, 4))
 TICKET_CIPHERS = ["chacha20-poly1305", "aes256gcm", "aes128gcm", "aes128ccm",
                   "aes128ccm_8", "aes256ccm", "aes256ccm_8"]
 PSK_MODES = ["psk_dhe_ke", "psk_ke"]
-EC_POINT_FORMATS = [ECPointFormat.ansiX962_compressed_char2,
-                    ECPointFormat.ansiX962_compressed_prime,
+EC_POINT_FORMATS = [ECPointFormat.ansiX962_compressed_prime,
                     ECPointFormat.uncompressed]
 
 
@@ -358,7 +357,7 @@ class HandshakeSettings(object):
         influences selected cipher suites.
 
     :vartype ec_point_formats: list
-    :ivat ec_point_formats: Enabeled point format extension for
+    :ivar ec_point_formats: Enabled point format extension for
      elliptic curves.
     """
 
@@ -606,11 +605,11 @@ class HandshakeSettings(object):
         if other.record_size_limit is not None and \
                 not 64 <= other.record_size_limit <= 2**14 + 1:
             raise ValueError("record_size_limit cannot exceed 2**14+1 bytes")
-        
+
         bad_ec_ext = [i for i in other.ec_point_formats if
                       i not in EC_POINT_FORMATS]
         if bad_ec_ext:
-            raise ValueError("Unknown ec point format extension: "
+            raise ValueError("Unknown EC point format provided: "
                              "{0}".format(bad_ec_ext))
 
         HandshakeSettings._sanityCheckEMSExtension(other)

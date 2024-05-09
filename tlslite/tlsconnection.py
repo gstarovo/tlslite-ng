@@ -655,12 +655,21 @@ class TLSConnection(TLSRecordLayer):
         alpnExt = serverHello.getExtension(ExtensionType.alpn)
         if alpnExt:
             alpnProto = alpnExt.protocol_names[0]
-        ext_c = clientHello.getExtension(ExtensionType.ec_point_formats)
-        ext_s = serverHello.getExtension(ExtensionType.ec_point_formats)
+
         ext_ec_point = ECPointFormat.uncompressed
-        if ext_c and ext_s:
-            ext_ec_point = [i for i in ext_c.formats \
-                        if i in ext_s.formats][0]
+        if self.version < (3, 4):
+            ext_c = clientHello.getExtension(ExtensionType.ec_point_formats)
+            ext_s = serverHello.getExtension(ExtensionType.ec_point_formats)
+            if ext_c and ext_s:
+                try:
+                    ext_ec_point = next((i for i in ext_c.formats \
+                                        if i in ext_s.formats))
+                
+                except StopIteration as alert:
+                    for result in self._sendError(
+                            AlertDescription.illegal_parameter,
+                            str(alert)):
+                        yield result
 
         # Create the session object which is used for resumptions
         self.session = Session()
@@ -771,9 +780,6 @@ class TLSConnection(TLSRecordLayer):
             if settings.ec_point_formats:
                 extensions.append(ECPointFormatsExtension().\
                                 create(settings.ec_point_formats))
-            else:
-                extensions.append(ECPointFormatsExtension().\
-                                create(list([ECPointFormat.uncompressed])))
         # Advertise FFDHE groups if we have DHE ciphers
         if next((cipher for cipher in cipherSuites
                  if cipher in CipherSuite.dhAllSuites), None) is not None:
@@ -2282,9 +2288,6 @@ class TLSConnection(TLSRecordLayer):
             if settings.ec_point_formats:
                 extensions.append(ECPointFormatsExtension().
                                 create(settings.ec_point_formats))
-            else:
-                extensions.append(ECPointFormatsExtension().\
-                                create(list([ECPointFormat.uncompressed])))
 
         # if client sent Heartbeat extension
         if clientHello.getExtension(ExtensionType.heartbeat):
@@ -2425,11 +2428,21 @@ class TLSConnection(TLSRecordLayer):
             srpUsername = clientHello.srp_username.decode("utf-8")
         if clientHello.server_name:
             serverName = clientHello.server_name.decode("utf-8")
-        ext_c = clientHello.getExtension(ExtensionType.ec_point_formats)
-        ext_s = serverHello.getExtension(ExtensionType.ec_point_formats)
+
         ext_ec_point = ECPointFormat.uncompressed
-        if ext_c and ext_s:
-            ext_ec_point = [i for i in ext_c.formats if i in ext_s.formats][0]
+        if version < (3, 4):
+            ext_c = clientHello.getExtension(ExtensionType.ec_point_formats)
+            ext_s = serverHello.getExtension(ExtensionType.ec_point_formats)
+            if ext_c and ext_s:
+                try:
+                    ext_ec_point = next((i for i in ext_c.formats \
+                                        if i in ext_s.formats))
+                
+                except StopIteration as alert:
+                    for result in self._sendError(
+                            AlertDescription.illegal_parameter,
+                            str(alert)):
+                        yield result
 
         # We'll update the session master secret once it is calculated
         # in _serverFinished

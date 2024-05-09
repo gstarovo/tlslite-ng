@@ -74,8 +74,7 @@ class Session(object):
         from the server
 
     :vartype ec_point_format: int
-    :ivar ec_point_format: used ec point extension format; 
-        created for testing
+    :ivar ec_point_format: used EC point format for the ECDH key exchange; 
     """
 
     def __init__(self):

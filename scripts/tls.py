@@ -416,8 +416,6 @@ def clientCmd(argv):
     if cipherlist:
         settings.cipherNames = [item for cipher in cipherlist
                                 for item in cipher.split(',')]
-    # CHANGED
-    settings.ec_point_formats = []
     try:
         start = time_stamp()
         if username and password:
@@ -570,9 +568,6 @@ def serverCmd(argv):
     if cipherlist:
         settings.cipherNames = [item for cipher in cipherlist
                                 for item in cipher.split(',')]
-    # CHANGED
-
-    settings.ec_point_formats = [2, 0]
 
     class MySimpleEchoHandler(BaseRequestHandler):
         def handle(self):

@@ -18,23 +18,22 @@ except ImportError:
 from tlslite.handshakesettings import HandshakeSettings
 from tlslite.messages import ServerHello, ClientHello, ServerKeyExchange,\
         CertificateRequest, ClientKeyExchange
-from tlslite.constants import CipherSuite, CertificateType, AlertDescription, \
+from tlslite.constants import CipherSuite, CertificateType, \
         HashAlgorithm, SignatureAlgorithm, GroupName, ECCurveType, \
-        SignatureScheme, ECPointFormat
-from tlslite.errors import TLSLocalAlert, TLSIllegalParameterException, \
+        SignatureScheme
+from tlslite.errors import TLSIllegalParameterException, \
         TLSDecryptionFailed, TLSInsufficientSecurity, TLSUnknownPSKIdentity, \
         TLSInternalError, TLSDecodeError
 from tlslite.x509 import X509
 from tlslite.x509certchain import X509CertChain
 from tlslite.utils.keyfactory import parsePEMKey
-from tlslite.utils.codec import Parser, Writer
+from tlslite.utils.codec import Parser
 from tlslite.utils.cryptomath import bytesToNumber, getRandomBytes, powMod, \
         numberToByteArray, isPrime, numBytes
 from tlslite.mathtls import makeX, makeU, makeK, goodGroupParameters
 from tlslite.handshakehashes import HandshakeHashes
 from tlslite import VerifierDB
-from tlslite.extensions import SupportedGroupsExtension, SNIExtension, \
-        ECPointFormatsExtension
+from tlslite.extensions import SupportedGroupsExtension, SNIExtension
 from tlslite.utils.ecc import getCurveByName, getPointByteSize
 from tlslite.utils.compat import a2b_hex
 import ecdsa
