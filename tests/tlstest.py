@@ -310,6 +310,7 @@ def clientTestCmd(argv):
     settings.minVersion = (3, 3)
     settings.maxVersion = (3, 3)
     settings.eccCurves = ["secp256r1", "secp384r1", "secp521r1", "x25519", "x448"]
+    settings.keyShares = ["secp256r1"]
     connection.handshakeClientCert(settings=settings)
     testConnClient(connection)
     assert connection.session.ec_point_format == ECPointFormat.uncompressed
@@ -2267,6 +2268,7 @@ def serverTestCmd(argv):
     settings.minVersion = (3, 1)
     settings.maxVersion = (3, 3)
     settings.eccCurves = ["secp256r1", "secp384r1", "secp521r1", "x25519", "x448"]
+    settings.keyShares = ["secp256r1"]
     settings.ec_point_formats = [ECPointFormat.uncompressed]
     connection.handshakeServer(certChain=x509ecdsaChain,
                             privateKey=x509ecdsaKey, settings=settings)
