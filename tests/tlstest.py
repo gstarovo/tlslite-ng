@@ -325,6 +325,7 @@ def clientTestCmd(argv):
     settings.minVersion = (3, 3)
     settings.maxVersion = (3, 3)
     settings.eccCurves = ["secp256r1", "secp384r1", "secp521r1", "x25519", "x448"]
+    settings.keyShares = ["secp256r1"]
     connection.handshakeClientCert(settings=settings)
     testConnClient(connection)
     assert connection.session.ec_point_format == ECPointFormat.ansiX962_compressed_prime
@@ -340,6 +341,7 @@ def clientTestCmd(argv):
     settings.maxVersion = (3, 3)
     settings.ec_point_formats = [ECPointFormat.ansiX962_compressed_prime]
     settings.eccCurves = ["secp256r1", "secp384r1", "secp521r1", "x25519", "x448"]
+    settings.keyShares = ["secp256r1"]
     try:
         connection.handshakeClientCert(settings=settings)
         assert False
@@ -359,6 +361,7 @@ def clientTestCmd(argv):
     settings.maxVersion = (3, 3)
     settings.ec_point_formats = [ECPointFormat.ansiX962_compressed_char2]
     settings.eccCurves = ["secp256r1", "secp384r1", "secp521r1", "x25519", "x448"]
+    settings.keyShares = ["secp256r1"]
     try:
         connection.handshakeClientCert(settings=settings)
         assert False
@@ -2285,6 +2288,7 @@ def serverTestCmd(argv):
     settings.minVersion = (3, 1)
     settings.maxVersion = (3, 3)
     settings.eccCurves = ["secp256r1", "secp384r1", "secp521r1", "x25519", "x448"]
+    settings.keyShares = ["secp256r1"]
     connection.handshakeServer(certChain=x509ecdsaChain,
                             privateKey=x509ecdsaKey, settings=settings)
     testConnServer(connection)
@@ -2300,6 +2304,7 @@ def serverTestCmd(argv):
     settings.minVersion = (3, 1)
     settings.maxVersion = (3, 3)
     settings.eccCurves = ["secp256r1", "secp384r1", "secp521r1", "x25519", "x448"]
+    settings.keyShares = ["secp256r1"]
     try:
         connection.handshakeServer(certChain=x509ecdsaChain,
                                 privateKey=x509ecdsaKey, settings=settings)
@@ -2319,6 +2324,7 @@ def serverTestCmd(argv):
     settings.minVersion = (3, 1)
     settings.maxVersion = (3, 3)
     settings.eccCurves = ["secp256r1", "secp384r1", "secp521r1", "x25519", "x448"]
+    settings.keyShares = ["secp256r1"]
     try:
         connection.handshakeServer(certChain=x509ecdsaChain,
                                 privateKey=x509ecdsaKey, settings=settings)
