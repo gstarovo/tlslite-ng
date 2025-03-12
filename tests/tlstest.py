@@ -19,8 +19,10 @@ import os.path
 import socket
 import time
 import timeit
-import getopt
+import hashlib
 from tempfile import mkstemp
+
+from tlslite.x509 import DelegatedCredential, Credential
 try:
     from BaseHTTPServer import HTTPServer
     from SimpleHTTPServer import SimpleHTTPRequestHandler
@@ -28,15 +30,16 @@ except ImportError:
     from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 from tlslite import TLSConnection, Fault, HandshakeSettings, \
-    X509, X509CertChain, IMAP4_TLS, VerifierDB, Session, SessionCache, \
+    X509, X509CertChain, IMAP4_TLS, VerifierDB, SessionCache, \
     parsePEMKey, constants, \
     AlertDescription, HTTPTLSConnection, TLSSocketServerMixIn, \
     POP3_TLS, m2cryptoLoaded, pycryptoLoaded, gmpyLoaded, tackpyLoaded, \
     Checker, __version__
-from tlslite.handshakesettings import VirtualHost, Keypair
+from tlslite.handshakesettings import VirtualHost, Keypair, DC_VALID_TIME
 
 from tlslite.errors import *
-from tlslite.utils.cryptomath import prngName, getRandomBytes
+from tlslite.utils.cryptomath import prngName, getRandomBytes, \
+    numberToByteArray
 try:
     import xmlrpclib
 except ImportError:
@@ -44,7 +47,11 @@ except ImportError:
     from xmlrpc import client as xmlrpclib
 import ssl
 from tlslite import *
-from tlslite.constants import KeyUpdateMessageType, ECPointFormat, SignatureScheme
+from tlslite.constants import TLS_1_3_BRAINPOOL_SIG_SCHEMES, \
+    HashAlgorithm, KeyUpdateMessageType, ECPointFormat, \
+    SignatureAlgorithm, SignatureScheme
+from tlslite.utils.pem import dePem
+from tlslite.utils.codec import Parser
 
 try:
     from tack.structures.Tack import Tack
@@ -1910,6 +1917,84 @@ def clientTestCmd(argv):
 
     test_no += 1
 
+    print("Test {0} - Delegated Credential test: RSA cert".format(test_no))
+    synchro.recv(1)
+    connection = connect()
+    settings = HandshakeSettings()
+    settings.maxVersion = (3, 4)
+    settings.dc_sig_algs = [SignatureScheme.rsa_pss_pss_sha256]
+    connection.handshakeClientCert(settings=settings)
+    assert connection.session.delegated_credential is not None
+    assert isinstance(connection.session.delegated_credential,
+                      DelegatedCredential)
+    assert connection.session.delegated_credential.algorithm == SignatureScheme.rsa_pss_pss_sha256
+    testConnClient(connection)
+    connection.close()
+
+    test_no += 1
+
+    print("Test {0} - Delegated Credential test: ECDSA cert".format(test_no))
+    synchro.recv(1)
+    connection = connect()
+    settings = HandshakeSettings()
+    settings.maxVersion = (3, 4)
+    settings.dc_sig_algs = [SignatureScheme.rsa_pss_pss_sha256]
+    connection.handshakeClientCert(settings=settings)
+    assert connection.session.delegated_credential is not None
+    assert isinstance(connection.session.delegated_credential,
+                      DelegatedCredential)
+    assert connection.session.delegated_credential.algorithm == SignatureScheme.ecdsa_secp256r1_sha256
+    testConnClient(connection)
+    connection.close()
+
+    test_no += 1
+
+    print("Test {0} - Delegated Credential test: Ed2551 cert".format(test_no))
+    synchro.recv(1)
+    connection = connect()
+    settings = HandshakeSettings()
+    settings.maxVersion = (3, 4)
+    settings.dc_sig_algs = [SignatureScheme.rsa_pss_pss_sha256]
+    connection.handshakeClientCert(settings=settings)
+    assert connection.session.delegated_credential is not None
+    assert isinstance(connection.session.delegated_credential,
+                      DelegatedCredential)
+    assert connection.session.delegated_credential.algorithm == SignatureScheme.ed25519
+    testConnClient(connection)
+    connection.close()
+
+    test_no += 1
+
+    print("Test {0} - Delegated Credential test: brainpoolP256r1tls13 cert".format(test_no))
+    synchro.recv(1)
+    connection = connect()
+    settings = HandshakeSettings()
+    settings.maxVersion = (3, 4)
+    settings.dc_sig_algs = [SignatureScheme.rsa_pss_pss_sha256]
+    connection.handshakeClientCert(settings=settings)
+    assert connection.session.delegated_credential is not None
+    assert isinstance(connection.session.delegated_credential,
+                      DelegatedCredential)
+    assert connection.session.delegated_credential.algorithm == SignatureScheme.ecdsa_brainpoolP256r1tls13_sha256
+    testConnClient(connection)
+    connection.close()
+
+    test_no += 1
+
+    print("Test {0} - good X.509 TLSv1.3, no DC on client side)".format(test_no))
+    synchro.recv(1)
+    settings = HandshakeSettings()
+    settings.certificate_compression_receive = []
+    settings.certificate_compression_send = []
+    settings.dc_sig_algs = [SignatureScheme.rsa_pss_pss_sha256]
+    connection = connect()
+    connection.handshakeClientCert(serverName=address[0],
+                                   settings=settings)
+    testConnClient(connection)
+    assert connection.server_cert_compression_algo is None
+    assert connection.client_cert_compression_algo is None
+    connection.close()
+
     print('Test {0} - good standard XMLRPC https client'.format(test_no))
     address = address[0], address[1]+1
     synchro.recv(1)
@@ -1966,6 +2051,8 @@ def clientTestCmd(argv):
     except (socket.error, socket.timeout) as e:
         print("Non-critical error: socket error trying to reach internet "
               "server: ", e)
+
+
 
     synchro.close()
 
@@ -2119,6 +2206,12 @@ def serverTestCmd(argv):
     with open(os.path.join(dir, "serverEd448Key.pem")) as f:
         x509Ed448Key = parsePEMKey(f.read(), private=True,
                                    implementations=["python"])
+    with open(os.path.join(dir, "serverX509DCKey.pem")) as f:
+        x509DCKey = parsePEMKey(f.read(), private=True,
+                                implementations=["python"])
+
+    with open(os.path.join(dir, "serverX509DCPub.pem")) as f:
+        X509DCPub = dePem(f.read(), "PUBLIC KEY")
 
     test_no = 0
 
@@ -3654,6 +3747,106 @@ def serverTestCmd(argv):
     connection.close()
 
     test_no +=1
+
+    print("Test {0}-{1} - Delegated Credential test".format(test_no, test_no + 3))
+    cert_alg = [(x509Chain, x509Key, SignatureScheme.rsa_pss_pss_sha256),
+                (x509ecdsaChain, x509ecdsaKey, SignatureScheme.ecdsa_secp256r1_sha256),
+                (x509Ed25519Chain, x509Ed25519Key, SignatureScheme.ed25519),
+                (x509ecdsaBrainpoolP256r1Chain,
+                 x509ecdsaBrainpoolP256r1Key,
+                 SignatureScheme.ecdsa_brainpoolP256r1tls13_sha256)
+    ]
+    for value in cert_alg:
+        synchro.send(b'R')
+        connection = connect()
+
+        cert_chain, private_key, sig_alg = value
+        scheme = SignatureScheme.toRepr(sig_alg)
+        dc_sig_alg = SignatureScheme.rsa_pss_pss_sha256
+
+        cert_bytes = cert_chain.x509List[0].bytes
+        valid_time = int(time.time()) + DC_VALID_TIME
+        cred_bytes = bytearray(numberToByteArray(valid_time) +
+                            numberToByteArray(dc_sig_alg[0]) +
+                            numberToByteArray(dc_sig_alg[1]) +
+                            X509DCPub)
+        cred = Credential(valid_time=valid_time,
+                        dc_cert_verify_algorithm=dc_sig_alg,
+                        subject_public_key_info=X509DCPub,
+                        bytes=cred_bytes)
+
+        bytes_to_sign = DelegatedCredential.compute_certificate_dc_sig_context(
+            cert_bytes,
+            cred_bytes,
+            sig_alg)
+
+        if sig_alg in (SignatureScheme.ed25519,
+                SignatureScheme.ed448):
+            hashName = "intrinsic"
+            padType = None
+            saltLen = None
+            sig_func = private_key.hashAndSign
+            ver_func = private_key.hashAndVerify
+        elif sig_alg[1] == SignatureAlgorithm.ecdsa:
+            hashName = HashAlgorithm.toRepr(sig_alg[0])
+            padType = None
+            saltLen = None
+            sig_func = private_key.hashAndSign
+            ver_func = private_key.hashAndVerify
+        elif sig_alg in TLS_1_3_BRAINPOOL_SIG_SCHEMES:
+            hashName = SignatureScheme.getHash(scheme)
+            padType = None
+            saltLen = None
+            sig_func = private_key.hashAndSign
+            ver_func = private_key.hashAndVerify
+        else:
+            padType = SignatureScheme.getPadding(scheme)
+            hashName = SignatureScheme.getHash(scheme)
+            saltLen = getattr(hashlib, hashName)().digest_size
+            sig_func = private_key.hashAndSign
+            ver_func = private_key.hashAndVerify
+
+        signature = sig_func(bytes_to_sign,
+                            padType,
+                            hashName,
+                            saltLen)
+        if not ver_func(signature, bytes_to_sign,
+                        padType,
+                        hashName,
+                        saltLen):
+            raise ValueError("Delegated Credential signature failed")
+
+
+        delegated_credential = DelegatedCredential(cred=cred,
+                                                    algorithm=sig_alg,
+                                                    signature=signature)
+
+        settings = HandshakeSettings()
+        settings.maxVersion = (3, 4)
+        settings.dc_sig_algs = [SignatureScheme.rsa_pss_pss_sha256]
+        connection.handshakeServer(certChain=cert_chain,
+                                privateKey=None,
+                                dc_key=x509DCKey,
+                                del_cred=delegated_credential,
+                                settings=settings)
+        assert connection.session.delegated_credential is not None
+        assert isinstance(connection.session.delegated_credential,
+                        DelegatedCredential)
+        testConnServer(connection)
+        connection.close()
+
+    test_no += 4
+
+    print("Test {0} - good X.509 TLSv1.3 (no DC on client side)".format(test_no))
+    synchro.send(b'R')
+    connection = connect()
+    connection.handshakeServer(certChain=x509Chain, privateKey=x509Key)
+    assert connection.server_cert_compression_algo is None
+    assert connection.client_cert_compression_algo is None
+    testConnServer(connection)
+    connection.close()
+
+    test_no += 1
 
     print("Tests {0}-{1} - XMLRPXC server".format(test_no, test_no + 2))
 
