@@ -10,6 +10,8 @@ except ImportError:
     import unittest
 
 import sys
+if sys.version_info[:2] > (3, 8):
+    import pytest
 
 from hypothesis import given, assume, settings
 from hypothesis.strategies import binary, integers, tuples
@@ -30,7 +32,6 @@ class TestTripleDES(unittest.TestCase):
                    (tuples(integers(0, 13), integers(0, 13))  # split points
                        .filter(lambda split_pts: split_pts[0] <= split_pts[1])
                        .map(lambda lengths: [i * 8 for i in lengths])))
-
     def split_test(self, key, iv, plaintext, split_points, make_impl=py_3des):
         i, j = split_points
 
