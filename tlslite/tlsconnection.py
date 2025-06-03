@@ -30,6 +30,7 @@ from .utils.lists import getFirstMatching
 from .errors import *
 from .messages import *
 from .mathtls import *
+from .utils.ecc import curve_name_to_hash_name
 from .handshakesettings import HandshakeSettings, KNOWN_VERSIONS, \
         CURVE_ALIASES, DC_VALID_TIME
 from .handshakehashes import HandshakeHashes
@@ -1469,10 +1470,10 @@ class TLSConnection(TLSRecordLayer):
                 for result in self._sendError(
                         AlertDescription.illegal_parameter,
                         "The server sent multiple delegated credentials "\
-                        "extensions in a single CertificateEntry "):
+                        "extensions in a single CertificateEntry."):
                     yield result
 
-            if cert_ext is not None:
+            if cert_ext:
                 if not settings.dc_sig_algs:
                     for result in self._sendError(
                             AlertDescription.unexpected_message,
@@ -1480,30 +1481,55 @@ class TLSConnection(TLSRecordLayer):
                             "when client does not support it."):
                         yield result
 
-                for result in self._check_delegated_credential(
-                    cert_entry,
-                    clientHello,
-                    certificate_verify,
-                    cert_ext.delegated_credential):
-
-                    if result in (0, 1):
-                        yield result
-                    else:
-                        break
-                publicKey, signature_scheme = result
+                if not cert_ext.delegated_credential.verify(
+                        cert_entry,
+                        clientHello,
+                        certificate_verify):
+                    raise TLSDecryptionFailed("server Delegated Credential " \
+                                              "verification failed.")
                 delegated_credential = cert_ext.delegated_credential
+                publicKey = delegated_credential.cred.pub_key
+                signature_scheme = delegated_credential.cred.dc_cert_verify_algorithm
 
-            try:
-                self._verify_signature_with_public_key(
-                    signature_scheme,
-                    certificate_verify.signature,
-                    signature_context,
-                    publicKey,
-                    "Certificate Verify")
-            except (TLSIllegalParameterException, TLSDecryptionFailed) as alert:
-                for result in self._sendError(
-                        AlertDescription.illegal_parameter, str(alert)):
-                    yield result
+            if signature_scheme in (SignatureScheme.ed25519,
+                                    SignatureScheme.ed448):
+                pad_type = None
+                hash_name = "intrinsic"
+                salt_len = None
+                method = publicKey.hashAndVerify
+            elif signature_scheme[1] == SignatureAlgorithm.ecdsa:
+                pad_type = None
+                hash_name = HashAlgorithm.toRepr(signature_scheme[0])
+                matching_hash = curve_name_to_hash_name(
+                    publicKey.curve_name)
+                if hash_name != matching_hash:
+                    raise TLSIllegalParameterException(
+                        "server selected signature method invalid for the "\
+                        "certificate it presented (curve mismatch)")
+
+                salt_len = None
+                method = publicKey.verify
+            elif signature_scheme in TLS_1_3_BRAINPOOL_SIG_SCHEMES:
+                scheme = SignatureScheme.toRepr(signature_scheme)
+                pad_type = None
+                hash_name = SignatureScheme.getHash(scheme)
+                salt_len = None
+                method = publicKey.verify
+            else:
+                scheme = SignatureScheme.toRepr(signature_scheme)
+                pad_type = SignatureScheme.getPadding(scheme)
+                hash_name = SignatureScheme.getHash(scheme)
+                salt_len = getattr(hashlib, hash_name)().digest_size
+                method = publicKey.verify
+
+            if not method(certificate_verify.signature,
+                          signature_context,
+                          pad_type,
+                          hash_name,
+                          salt_len):
+                raise TLSDecryptionFailed("server Certificate Verify "
+                                          "signature "
+                                          "verification failed")
 
         transcript_hash = self._handshake_hash.digest(prfName)
 
@@ -2016,144 +2042,6 @@ class TLSConnection(TLSRecordLayer):
             yield result
         yield masterSecret
 
-    def _check_delegated_credential(self,
-                                    certificate_entry,
-                                    client_hello,
-                                    cert_verify,
-                                    deleg_cred):
-        """
-        Verify that the delegated credential is valid.
-
-        Checks if the the delegated credential did not expire,
-        the algorithms are of a type advertized by the client,
-        the verify alg matches the scheme in peer's message.
-        """
-        certificate = certificate_entry.certificate
-        dc_sig_list = client_hello.getExtension(
-            ExtensionType.delegated_credential)
-        if deleg_cred.cred.dc_cert_verify_algorithm not in dc_sig_list.sigalgs:
-            for result in self._sendError(
-                    AlertDescription.illegal_parameter,
-                    "The dc_cert_verify_algorithm of the delegated "
-                    "credential algorithm must be a type "
-                    "advertised by the client in ClientHello extension."):
-                yield result
-        sig_list = client_hello.getExtension(ExtensionType.signature_algorithms)
-        if deleg_cred.algorithm not in sig_list.sigalgs:
-            for result in self._sendError(
-                    AlertDescription.illegal_parameter,
-                    "The algorithm field MUST be of a type advertised by "
-                    "the client in the signature_algorithms extension of "
-                    "the ClientHello message."):
-                yield result
-        curr_time = time.time()
-
-        if curr_time > deleg_cred.cred.valid_time:
-            for result in self._sendError(
-                    AlertDescription.illegal_parameter,
-                    "The Delegated Credential time validity has expired."):
-                yield result
-
-        seven_days = DC_VALID_TIME
-        if seven_days + curr_time < deleg_cred.cred.valid_time:
-            for result in self._sendError(
-                    AlertDescription.illegal_parameter,
-                    "The expiry time exceeds the current time "
-                    "plus the maximum validity period (7 days by default)"):
-                yield result
-
-        dc_cert_verify_algorithm = deleg_cred.cred.dc_cert_verify_algorithm
-        if dc_cert_verify_algorithm != cert_verify.signatureAlgorithm:
-            for result in self._sendError(
-                    AlertDescription.illegal_parameter,
-                    "The dc_cert_verify_algorithm does not match "
-                    "the scheme indicated in the peer's "
-                    "CertificateVerify message"):
-                yield result
-
-        sig_context = self._compute_certificate_dc_sig_context(
-            certificate.bytes,
-            deleg_cred.cred.bytes,
-            deleg_cred.algorithm)
-
-        cert_pub_key = certificate.publicKey
-        sig_scheme = deleg_cred.algorithm
-
-        try:
-            self._verify_signature_with_public_key(sig_scheme,
-                                                   deleg_cred.signature,
-                                                   sig_context,
-                                                   cert_pub_key,
-                                                   "Delegated Credential")
-        except (TLSIllegalParameterException, TLSDecryptionFailed) as alert:
-            for result in self._sendError(
-                    AlertDescription.illegal_parameter, str(alert)):
-                yield result
-
-        yield deleg_cred.cred.pub_key, deleg_cred.cred.dc_cert_verify_algorithm
-
-
-    def _verify_signature_with_public_key(self, sig_scheme, sig, sig_context,
-                        pub_key, verification_context):
-        """
-        Verifies a signature using a public key.
-
-        :type sig_scheme: ~tlslite.constants.SignatureScheme
-        :param sig_scheme: The signature scheme to use.
-
-        :type sig: bytes-like object
-        :param sig: The signature to verify.
-
-        :type sig_context: bytes-like object
-        :param sig_context: The data that was signed.
-
-        :type pub_key: ~tlslite.utils.rsakey.RSAKey
-        :param pub_key: The public key to use for verification.
-
-        :type verification_context: str
-        :param verification_context: A string describing what is being verified
-                    (e.g., "CertificateVerify", "Delegated Credential").
-        """
-
-        if sig_scheme in (SignatureScheme.ed25519,
-                                SignatureScheme.ed448):
-            pad_type = None
-            hash_name = "intrinsic"
-            salt_len = None
-            method = pub_key.hashAndVerify
-        elif sig_scheme[1] == SignatureAlgorithm.ecdsa:
-            pad_type = None
-            hash_name = HashAlgorithm.toRepr(sig_scheme[0])
-            matching_hash = self._curve_name_to_hash_name(
-                pub_key.curve_name)
-            if hash_name != matching_hash:
-                raise TLSIllegalParameterException(
-                    "server selected signature method invalid for the "
-                    "certificate it presented (curve mismatch)")
-
-            salt_len = None
-            method = pub_key.verify
-        elif sig_scheme in TLS_1_3_BRAINPOOL_SIG_SCHEMES:
-            scheme = SignatureScheme.toRepr(sig_scheme)
-            pad_type = None
-            hash_name = SignatureScheme.getHash(scheme)
-            salt_len = None
-            method = pub_key.verify
-        else:
-            scheme = SignatureScheme.toRepr(sig_scheme)
-            pad_type = SignatureScheme.getPadding(scheme)
-            hash_name = SignatureScheme.getHash(scheme)
-            salt_len = getattr(hashlib, hash_name)().digest_size
-            method = pub_key.verify
-
-        if not method(sig,
-                        sig_context,
-                        pad_type,
-                        hash_name,
-                        salt_len):
-            raise TLSDecryptionFailed("server {} signature verification "
-                                      "failed.".format(verification_context))
-
     def _check_certchain_with_settings(self, cert_chain, settings):
         """
         Verify that the key parameters match enabled ones.
@@ -2283,7 +2171,7 @@ class TLSConnection(TLSRecordLayer):
                         reqCAs = None,
                         tacks=None, activationFlags=0,
                         nextProtos=None, anon=False, alpn=None, sni=None,
-                        dc_key=None, dc_pub=None):
+                        dc_key=None, del_cred=None):
         """Perform a handshake in the role of server.
 
         This function performs an SSL or TLS handshake.  Depending on
@@ -2368,9 +2256,8 @@ class TLSConnection(TLSRecordLayer):
         :param dc_key: The delegated credential's private key to be used
             if the client supports DC.
 
-        :type dc_pub: bytearray
-        :param dc_pub: The delegated credential's public key to be sent
-            to the user.
+        :type del_cred: bytearray
+        :param del_cred: The delegated credential
 
         :raises socket.error: If a socket error occurs.
         :raises tlslite.errors.TLSAbruptCloseError: If the socket is closed
@@ -2384,7 +2271,7 @@ class TLSConnection(TLSRecordLayer):
                 checker, reqCAs,
                 tacks=tacks, activationFlags=activationFlags,
                 nextProtos=nextProtos, anon=anon, alpn=alpn, sni=sni,
-                dc_key=dc_key, dc_pub=dc_pub):
+                dc_key=dc_key, del_cred=del_cred):
             pass
 
 
@@ -2394,7 +2281,7 @@ class TLSConnection(TLSRecordLayer):
                              reqCAs=None,
                              tacks=None, activationFlags=0,
                              nextProtos=None, anon=False, alpn=None, sni=None,
-                             dc_key=None, dc_pub=None
+                             dc_key=None, del_cred=None
                              ):
         """Start a server handshake operation on the TLS connection.
 
@@ -2414,7 +2301,7 @@ class TLSConnection(TLSRecordLayer):
             reqCAs=reqCAs,
             tacks=tacks, activationFlags=activationFlags,
             nextProtos=nextProtos, anon=anon, alpn=alpn, sni=sni,
-            dc_key=dc_key, dc_pub=dc_pub)
+            dc_key=dc_key, del_cred=del_cred)
         for result in self._handshakeWrapperAsync(handshaker, checker):
             yield result
 
@@ -2423,7 +2310,7 @@ class TLSConnection(TLSRecordLayer):
                                     cert_chain, privateKey, reqCert,
                                     sessionCache, settings, reqCAs, tacks,
                                     activationFlags, nextProtos, anon, alpn,
-                                    sni, dc_key, dc_pub):
+                                    sni, dc_key, del_cred):
 
         self._handshakeStart(client=False)
 
@@ -2434,7 +2321,7 @@ class TLSConnection(TLSRecordLayer):
         if (not verifierDB) and (not cert_chain) and not anon and \
                 not settings.pskConfigs and not settings.virtual_hosts:
             raise ValueError("Caller passed no authentication credentials")
-        if cert_chain and not privateKey:
+        if cert_chain and not privateKey and not (dc_key or del_cred):
             raise ValueError("Caller passed a cert_chain but no privateKey")
         if privateKey and not cert_chain:
             raise ValueError("Caller passed a privateKey but no cert_chain")
@@ -2479,7 +2366,7 @@ class TLSConnection(TLSRecordLayer):
                                                      privateKey, cert_chain,
                                                      version, sig_scheme,
                                                      alpn, reqCert, dc_key,
-                                                     dc_pub):
+                                                     del_cred):
                 if result in (0, 1):
                     yield result
                 else:
@@ -2963,7 +2850,7 @@ class TLSConnection(TLSRecordLayer):
 
     def _serverTLS13Handshake(self, settings, clientHello, cipherSuite,
                               privateKey, serverCertChain, version, scheme,
-                              srv_alpns, reqCert, dc_key, dc_pub):
+                              srv_alpns, reqCert, dc_key, del_cred):
         """Perform a TLS 1.3 handshake"""
         prf_name, prf_size = self._getPRFParams(cipherSuite)
         cert_req_comp_cert_ext = None
@@ -3048,10 +2935,29 @@ class TLSConnection(TLSRecordLayer):
 
         # we need to gen key share either when we selected psk_dhe_ke or
         # regular certificate authenticated key exchange (the default)
+        # or usage of delegated credential
+        delegated_credential = None
+        dc_sig_scheme = None
+        dc_client_ext = clientHello.getExtension(
+            ExtensionType.delegated_credential)
+        dc_server_ext = None
+        if del_cred:
+            dc_server_ext = [del_cred.cred.dc_cert_verify_algorithm]
+
+        if dc_server_ext and dc_client_ext is not None and del_cred and dc_key:
+            try:
+                dc_sig_scheme = next((i for i in dc_client_ext.sigalgs \
+                                            if i in dc_server_ext))
+                # If no sig algs were found, the server does not support
+                # requested dc sig algs
+            except StopIteration:
+                dc_sig_scheme = None
+
         if (psk and
                 PskKeyExchangeMode.psk_dhe_ke in psk_types.modes and
                 "psk_dhe_ke" in settings.psk_modes) or\
-                (psk is None and privateKey):
+                (psk is None and privateKey) or\
+                (psk is None and privateKey is None and dc_sig_scheme):
             self.ecdhCurve = selected_group
             kex = self._getKEX(selected_group, version)
             if selected_group in GroupName.allKEM:
@@ -3084,7 +2990,8 @@ class TLSConnection(TLSRecordLayer):
         else:
             for result in self._sendError(
                     AlertDescription.handshake_failure,
-                    "Could not find acceptable PSK identity nor certificate"):
+                    "Could not find acceptable PSK identity nor certificate," \
+                    " nor delegated credential."):
                 yield result
 
         if psk is None:
@@ -3208,84 +3115,9 @@ class TLSConnection(TLSRecordLayer):
                     extensions=extensions)
                 self._queue_message(certificate_request)
 
-            # Deciding if to use delegated credential
-            dc_sig_scheme = None
-            dc_client_ext = clientHello.getExtension(
-                ExtensionType.delegated_credential)
-
-            dc_server_ext = settings.dc_sig_algs
-            if dc_client_ext and dc_server_ext:
-                try:
-                    dc_sig_scheme = next((i for i in dc_client_ext.sigalgs \
-                                                if i in dc_server_ext))
-                # If no sig algs were found, the server does not support
-                # requested sig algs
-                except StopIteration as alert:
-                    dc_sig_scheme = None
-
             extensions = [[] for i in range(len(serverCertChain.x509List))]
-            if dc_key and dc_sig_scheme:
-                cert_bytes = serverCertChain.x509List[0].bytes
-                private_key = privateKey
-                pub_key = dc_pub
-                dc_scheme = dc_sig_scheme
-                expiry = settings.dc_valid_time
-                cert_scheme = getattr(SignatureScheme, scheme)
-                valid_time = int(time.time()) + expiry
-                cred_bytes = bytearray(numberToByteArray(valid_time) +
-                                        numberToByteArray(dc_scheme[0]) +
-                                        numberToByteArray(dc_scheme[1]) +
-                                        pub_key)
-                cred = Credential(valid_time=valid_time,
-                                    dc_cert_verify_algorithm=dc_scheme,
-                                    subject_public_key_info=pub_key,
-                                    bytes=cred_bytes)
-                bytes_to_sign = self._compute_certificate_dc_sig_context(
-                    cert_bytes,
-                    cred_bytes,
-                    cert_scheme
-                    )
-                if cert_scheme in (SignatureScheme.ed25519,
-                            SignatureScheme.ed448):
-                    hashName = "intrinsic"
-                    padType = None
-                    saltLen = None
-                    sig_func = private_key.hashAndSign
-                    ver_func = private_key.hashAndVerify
-                elif cert_scheme[1] == SignatureAlgorithm.ecdsa:
-                    hashName = HashAlgorithm.toRepr(cert_scheme[0])
-                    padType = None
-                    saltLen = None
-                    sig_func = private_key.sign
-                    ver_func = private_key.verify
-                elif cert_scheme in TLS_1_3_BRAINPOOL_SIG_SCHEMES:
-                    hashName = SignatureScheme.getHash(scheme)
-                    padType = None
-                    saltLen = None
-                    sig_func = private_key.sign
-                    ver_func = private_key.verify
-                else:
-                    padType = SignatureScheme.getPadding(scheme)
-                    hashName = SignatureScheme.getHash(scheme)
-                    saltLen = getattr(hashlib, hashName)().digest_size
-                    sig_func = private_key.sign
-                    ver_func = private_key.verify
-
-                signature = sig_func(bytes_to_sign,
-                                    padType,
-                                    hashName,
-                                    saltLen)
-                if not ver_func(signature, bytes_to_sign,
-                                padType,
-                                hashName,
-                                saltLen):
-                    for result in self._sendError(
-                            AlertDescription.internal_error,
-                            "Delegated Credential signature failed"):
-                        yield result
-                delegated_credential = DelegatedCredential(cred=cred,
-                                                           algorithm=cert_scheme,
-                                                           signature=signature)
+            delegated_credential = del_cred
+            if delegated_credential and dc_sig_scheme:
                 del_cred_ext = DelegatedCredentialCertExtension().create(
                     delegated_credential)
                 extensions[0].append(del_cred_ext)
@@ -3301,7 +3133,7 @@ class TLSConnection(TLSRecordLayer):
             signature_scheme = getattr(SignatureScheme, scheme)
             self.serverSigAlg = signature_scheme
 
-            if delegated_credential:
+            if delegated_credential and dc_sig_scheme:
                 privateKey = dc_key
                 signature_scheme = dc_sig_scheme
                 scheme = SignatureScheme.toRepr(signature_scheme)
@@ -5288,8 +5120,7 @@ class TLSConnection(TLSRecordLayer):
                     # in TLS 1.3 ECDSA key curve is bound to hash
                     if publicKey and version > (3, 3):
                         curve = publicKey.curve_name
-                        matching_hash = TLSConnection._curve_name_to_hash_name(
-                            curve)
+                        matching_hash = curve_name_to_hash_name(curve)
                         if hashName != matching_hash:
                             continue
 
@@ -5352,38 +5183,3 @@ class TLSConnection(TLSRecordLayer):
     def _groupNamesToList(settings):
         """Convert list of acceptable ff groups to TLS identifiers."""
         return [getattr(GroupName, val) for val in settings.dhGroups]
-
-    @staticmethod
-    def _curve_name_to_hash_name(curve_name):
-        """Returns the matching hash for a given curve name, for TLS 1.3
-
-        expects the python-ecdsa curve names as parameter
-        """
-        if curve_name == "NIST256p":
-            return "sha256"
-        if curve_name == "NIST384p":
-            return "sha384"
-        if curve_name == "NIST521p":
-            return "sha512"
-        if curve_name == "BRAINPOOLP256r1":
-            return "sha256"
-        if curve_name == "BRAINPOOLP384r1":
-            return "sha384"
-        if curve_name == "BRAINPOOLP512r1":
-            return "sha512"
-        raise TLSIllegalParameterException(
-            "Curve {0} is not supported in TLS 1.3".format(curve_name))()
-
-    @staticmethod
-    def _compute_certificate_dc_sig_context(cert_bytes, cred_bytes, dc_alg):
-        """
-        Reconstructs the certificate signature context
-        over the delegated credential.
-        """
-        verify_bytes = bytearray(b'\x20' * 64 +
-                                 b'TLS, server delegated credentials' +
-                                 b'\x00' +
-                                 cert_bytes +
-                                 cred_bytes +
-                                 bytearray(dc_alg))
-        return verify_bytes

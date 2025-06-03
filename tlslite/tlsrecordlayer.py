@@ -976,6 +976,7 @@ class TLSRecordLayer(object):
             if len(msg.write()) == 0:
                 return
         buf = msg.write()
+
         contentType = msg.contentType
         #Update handshake hashes
         if update_hashes and contentType == ContentType.handshake:
@@ -1001,6 +1002,7 @@ class TLSRecordLayer(object):
             raise ValueError("Queuing of wrong message types")
         if self._buffer_content_type is None:
             self._buffer_content_type = msg.contentType
+
         serialised_msg = msg.write()
         self._buffer += serialised_msg
         if msg.contentType == ContentType.handshake:

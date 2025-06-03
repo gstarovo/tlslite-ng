@@ -8,6 +8,9 @@
 
 from ecdsa.keys import VerifyingKey
 
+from tlslite.errors import TLSDecryptionFailed
+from tlslite.handshakesettings import DC_VALID_TIME
+
 from .utils.asn1parser import ASN1Parser
 from .utils.cryptomath import *
 from .utils.keyfactory import (
@@ -18,9 +21,10 @@ from .utils.keyfactory import (
 )
 from .utils.pem import *
 from .utils.compat import compatHMAC, b2a_hex
-from .constants import AlgorithmOID, RSA_PSS_OID
-from .utils.compat import bytes_to_int
-
+from .constants import TLS_1_3_BRAINPOOL_SIG_SCHEMES, AlgorithmOID, RSA_PSS_OID, ExtensionType, \
+    SignatureAlgorithm, HashAlgorithm, SignatureScheme
+from .utils.ecc import curve_name_to_hash_name
+from .errors import TLSIllegalParameterException
 
 class X509(object):
     """
@@ -181,6 +185,7 @@ class X509(object):
         """Serialise object to a DER encoded string."""
         return self.bytes
 
+
 def get_algorithm(alg_identifier):
     """
     Rethrive the algoritm from the AlgorithmIdentifier
@@ -312,11 +317,11 @@ class Credential(object):
     """
     This class represents a credential.
 
-    :vartype valid_time: uint32
+    :vartype valid_time: int
     :ivar valid_time: time, after which the delegated
       credential is no longer valid.
 
-    :vartype dc_cert_verify_algorithm: tlslite.contstants.SignatureScheme
+    :vartype dc_cert_verify_algorithm: tuple(int,int)
     :ivar dc_cert_verify_algorithm: the signature algorithm of the credential
       key pair.
 
@@ -385,7 +390,7 @@ class DelegatedCredential(object):
     :vartype cred: Credential
     :ivar cred: the credential structure
 
-    :vartype algorithm: SignatureScheme
+    :vartype algorithm: tuple(int,int)
     :ivar algorithm: The signature algorithm used to create
       DelegatedCredential.signature.
 
@@ -423,3 +428,124 @@ class DelegatedCredential(object):
         self.algorithm = (parser.get(1), parser.get(1))
         self.signature = parser.getVarBytes(2)
         return self
+
+    def write(self):
+        """Serialise object to a DER encoded string."""
+        writer = Writer()
+        writer.addFour(
+            self.cred.valid_time)
+        writer.addOne(
+            self.cred.dc_cert_verify_algorithm[0])
+        writer.addOne(
+            self.cred.dc_cert_verify_algorithm[1])
+        writer.add_var_bytes(
+            self.cred.subject_public_key_info, 3)
+        writer.addOne(self.algorithm[0])
+        writer.addOne(self.algorithm[1])
+        writer.add_var_bytes(self.signature, 2)
+        return writer.bytes
+
+    def verify(self, certificate_entry, client_hello, cert_verify):
+        """
+        Verify that the delegated credential is valid.
+
+        Checks if the the delegated credential did not expire,
+        the algorithms are of a type advertized by the client,
+        the verify alg matches the scheme in peer's message.
+        """
+        certificate = certificate_entry.certificate
+        dc_sig_list = client_hello.getExtension(
+            ExtensionType.delegated_credential)
+        if self.cred.dc_cert_verify_algorithm not in dc_sig_list.sigalgs:
+            raise TLSIllegalParameterException(
+                "The dc_cert_verify_algorithm of the delegated "
+                "credential algorithm must be a type "
+                "advertised by the client in ClientHello extension.")
+
+        sig_list = client_hello.getExtension(ExtensionType.signature_algorithms)
+        if self.algorithm not in sig_list.sigalgs:
+            raise TLSIllegalParameterException(
+                "The algorithm field MUST be of a type advertised by "
+                "the client in the signature_algorithms extension of "
+                "the ClientHello message.")
+        curr_time = time.time()
+
+        if curr_time > self.cred.valid_time:
+            raise TLSIllegalParameterException(
+                "The Delegated Credential time validity has expired.")
+
+        seven_days = DC_VALID_TIME
+        if seven_days + curr_time < self.cred.valid_time:
+            raise TLSIllegalParameterException(
+                "The expiry time exceeds the current time "
+                "plus the maximum validity period (7 days by default)")
+
+        dc_cert_verify_algorithm = self.cred.dc_cert_verify_algorithm
+        if dc_cert_verify_algorithm != cert_verify.signatureAlgorithm:
+            raise TLSIllegalParameterException(
+                "The dc_cert_verify_algorithm does not match "
+                "the scheme indicated in the peer's "
+                "CertificateVerify message")
+
+        sig_context = DelegatedCredential.compute_certificate_dc_sig_context(
+            certificate.bytes,
+            self.cred.bytes,
+            self.algorithm)
+
+        cert_pub_key = certificate.publicKey
+        sig_scheme = self.algorithm
+
+        if sig_scheme in (SignatureScheme.ed25519,
+                                SignatureScheme.ed448):
+            pad_type = None
+            hash_name = "intrinsic"
+            salt_len = None
+            method = cert_pub_key.hashAndVerify
+        elif sig_scheme[1] == SignatureAlgorithm.ecdsa:
+            pad_type = None
+            hash_name = HashAlgorithm.toRepr(sig_scheme[0])
+            matching_hash = curve_name_to_hash_name(
+                cert_pub_key.curve_name)
+            if hash_name != matching_hash:
+                raise TLSIllegalParameterException(
+                    "server selected signature method invalid for the "
+                    "certificate it presented (curve mismatch)")
+
+            salt_len = None
+            method = cert_pub_key.hashAndVerify
+        elif sig_scheme in TLS_1_3_BRAINPOOL_SIG_SCHEMES:
+            scheme = SignatureScheme.toRepr(sig_scheme)
+            pad_type = None
+            hash_name = SignatureScheme.getHash(scheme)
+            salt_len = None
+            method = cert_pub_key.hashAndVerify
+        else:
+            scheme = SignatureScheme.toRepr(sig_scheme)
+            pad_type = SignatureScheme.getPadding(scheme)
+            hash_name = SignatureScheme.getHash(scheme)
+            salt_len = getattr(hashlib, hash_name)().digest_size
+            method = cert_pub_key.hashAndVerify
+
+        if not method(self.signature,
+                        sig_context,
+                        pad_type,
+                        hash_name,
+                        salt_len):
+            raise TLSDecryptionFailed("server Delegated Credential " \
+            "signature verification failed.")
+
+        return self.cred.pub_key, self.cred.dc_cert_verify_algorithm
+
+    @staticmethod
+    def compute_certificate_dc_sig_context(cert_bytes, cred_bytes, dc_alg):
+        """
+        Reconstructs the certificate signature context
+        over the delegated credential.
+        """
+        verify_bytes = bytearray(b'\x20' * 64 +
+                                 b'TLS, server delegated credentials' +
+                                 b'\x00' +
+                                 cert_bytes +
+                                 cred_bytes +
+                                 bytearray(dc_alg))
+        return verify_bytes

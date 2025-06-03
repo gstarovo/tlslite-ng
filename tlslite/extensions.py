@@ -1378,19 +1378,7 @@ class DelegatedCredentialCertExtension(TLSExtension):
     @property
     def extData(self):
         """Serialise the object."""
-        writer = Writer()
-        writer.addFour(
-            self.delegated_credential.cred.valid_time)
-        writer.addOne(
-            self.delegated_credential.cred.dc_cert_verify_algorithm[0])
-        writer.addOne(
-            self.delegated_credential.cred.dc_cert_verify_algorithm[1])
-        writer.add_var_bytes(
-            self.delegated_credential.cred.subject_public_key_info, 3)
-        writer.addOne(self.delegated_credential.algorithm[0])
-        writer.addOne(self.delegated_credential.algorithm[1])
-        writer.add_var_bytes(self.delegated_credential.signature, 2)
-        return writer.bytes
+        return self.delegated_credential.write()
 
 
 class SupportedGroupsExtension(VarListExtension):

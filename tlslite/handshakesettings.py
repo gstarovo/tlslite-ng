@@ -89,7 +89,7 @@ if compression_algo_impls["zstd_decompress"]:
     ALL_COMPRESSION_ALGOS_RECEIVE.append('zstd')
 
 # in TLS 1.3
-# When using RSA in delegaterd credential,
+# When using RSA in delegated credential,
 # the public key MUST NOT use the rsaEncryption OID.
 # As a result, the following algorithms are not allowed for use with
 # delegated credentials. RFC 9345

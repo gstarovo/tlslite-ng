@@ -74,7 +74,11 @@ class Session(object):
         from the server
 
     :vartype ec_point_format: int
-    :ivar ec_point_format: used EC point format for the ECDH key exchange;
+    :ivar ec_point_format: used EC point format for the ECDH key exchange
+
+    :vartype delegated_credential: ~tlslite.X509.DelegatedCredential
+    :ivar delegated_credential: the server's delegated credential (or None)
+        in TLS 1.3
     """
 
     def __init__(self):

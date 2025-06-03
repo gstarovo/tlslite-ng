@@ -1157,6 +1157,7 @@ class Certificate(HandshakeMsg):
     def create(self, cert_chain, context=b'', ext=None):
         """Initialise fields of the class."""
         self.cert_chain = (cert_chain, ext)
+        #separate param
         self.certificate_request_context = context
         return self
 
