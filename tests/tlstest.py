@@ -19,7 +19,6 @@ import os.path
 import socket
 import time
 import timeit
-import getopt
 import hashlib
 from tempfile import mkstemp
 
@@ -31,7 +30,7 @@ except ImportError:
     from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 from tlslite import TLSConnection, Fault, HandshakeSettings, \
-    X509, X509CertChain, IMAP4_TLS, VerifierDB, Session, SessionCache, \
+    X509, X509CertChain, IMAP4_TLS, VerifierDB, SessionCache, \
     parsePEMKey, constants, \
     AlertDescription, HTTPTLSConnection, TLSSocketServerMixIn, \
     POP3_TLS, m2cryptoLoaded, pycryptoLoaded, gmpyLoaded, tackpyLoaded, \
@@ -48,9 +47,10 @@ except ImportError:
     from xmlrpc import client as xmlrpclib
 import ssl
 from tlslite import *
-from tlslite.constants import TLS_1_3_BRAINPOOL_SIG_SCHEMES, HashAlgorithm, KeyUpdateMessageType, ECPointFormat, SignatureAlgorithm, SignatureScheme
+from tlslite.constants import TLS_1_3_BRAINPOOL_SIG_SCHEMES, \
+    HashAlgorithm, KeyUpdateMessageType, ECPointFormat, \
+    SignatureAlgorithm, SignatureScheme
 from tlslite.utils.pem import dePem
-from tlslite.utils.codec import Parser
 
 try:
     from tack.structures.Tack import Tack
@@ -3750,20 +3750,19 @@ def serverTestCmd(argv):
     test_no +=1
 
     print("Test {0}-{1} - Delegated Credential test".format(test_no, test_no + 3))
-    cert_alg = {x509Chain: (x509Key, SignatureScheme.rsa_pss_pss_sha256),
-                x509ecdsaChain: (x509ecdsaKey, SignatureScheme.ecdsa_secp256r1_sha256),
-                x509Ed25519Chain: (x509Ed25519Key, SignatureScheme.ed25519),
-                x509ecdsaBrainpoolP256r1Chain:
-                (x509ecdsaBrainpoolP256r1Key,
+    cert_alg = [(x509Chain, x509Key, SignatureScheme.rsa_pss_pss_sha256),
+                (x509ecdsaChain, x509ecdsaKey, SignatureScheme.ecdsa_secp256r1_sha256),
+                (x509Ed25519Chain, x509Ed25519Key, SignatureScheme.ed25519),
+                (x509ecdsaBrainpoolP256r1Chain,
+                 x509ecdsaBrainpoolP256r1Key,
                  SignatureScheme.ecdsa_brainpoolP256r1tls13_sha256)
-                }
-    for cert_chain, value in cert_alg.items():
+    ]
+    for value in cert_alg:
         synchro.send(b'R')
         connection = connect()
 
-        private_key, sig_alg = value
+        cert_chain, private_key, sig_alg = value
         scheme = SignatureScheme.toRepr(sig_alg)
-
         dc_sig_alg = SignatureScheme.rsa_pss_pss_sha256
 
         cert_bytes = cert_chain.x509List[0].bytes

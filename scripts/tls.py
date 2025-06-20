@@ -917,7 +917,7 @@ def _create_delegated_credential_object(
                 sig_alg = SignatureScheme.ecdsa_secp256r1_sha256
         elif cert_type == "dsa":
             sig_alg = SignatureScheme.dsa_sha256
-        elif cert_type in {"rsa", "rsa-pss"}:
+        elif cert_type in ("rsa", "rsa-pss"):
             sig_alg = SignatureScheme.rsa_pss_pss_sha256
 
     scheme = SignatureScheme.toRepr(sig_alg)
