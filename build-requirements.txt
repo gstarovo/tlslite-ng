@@ -3,5 +3,5 @@ hypothesis
 coveralls
 pylint<2.10
 diff_cover
-pytest>=4.6.5
+pytest>=4.6.5,<=8.3.5
 pluggy>=0.7

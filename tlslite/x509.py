@@ -534,7 +534,7 @@ class DelegatedCredential(object):
             raise TLSDecryptionFailed("server Delegated Credential " \
             "signature verification failed.")
 
-        return self.cred.pub_key, self.cred.dc_cert_verify_algorithm
+        return True
 
     @staticmethod
     def compute_certificate_dc_sig_context(cert_bytes, cred_bytes, dc_alg):

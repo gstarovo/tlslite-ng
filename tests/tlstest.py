@@ -19,7 +19,6 @@ import os.path
 import socket
 import time
 import timeit
-import getopt
 import hashlib
 from tempfile import mkstemp
 
@@ -31,7 +30,7 @@ except ImportError:
     from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 from tlslite import TLSConnection, Fault, HandshakeSettings, \
-    X509, X509CertChain, IMAP4_TLS, VerifierDB, Session, SessionCache, \
+    X509, X509CertChain, IMAP4_TLS, VerifierDB, SessionCache, \
     parsePEMKey, constants, \
     AlertDescription, HTTPTLSConnection, TLSSocketServerMixIn, \
     POP3_TLS, m2cryptoLoaded, pycryptoLoaded, gmpyLoaded, tackpyLoaded, \
@@ -48,9 +47,10 @@ except ImportError:
     from xmlrpc import client as xmlrpclib
 import ssl
 from tlslite import *
-from tlslite.constants import TLS_1_3_BRAINPOOL_SIG_SCHEMES, HashAlgorithm, KeyUpdateMessageType, ECPointFormat, SignatureAlgorithm, SignatureScheme
+from tlslite.constants import TLS_1_3_BRAINPOOL_SIG_SCHEMES, \
+    HashAlgorithm, KeyUpdateMessageType, ECPointFormat, \
+    SignatureAlgorithm, SignatureScheme
 from tlslite.utils.pem import dePem
-from tlslite.utils.codec import Parser
 
 try:
     from tack.structures.Tack import Tack
