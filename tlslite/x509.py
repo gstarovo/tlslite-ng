@@ -21,8 +21,9 @@ from .utils.keyfactory import (
 )
 from .utils.pem import *
 from .utils.compat import compatHMAC, b2a_hex
-from .constants import TLS_1_3_BRAINPOOL_SIG_SCHEMES, AlgorithmOID, RSA_PSS_OID, ExtensionType, \
-    SignatureAlgorithm, HashAlgorithm, SignatureScheme
+from .constants import TLS_1_3_BRAINPOOL_SIG_SCHEMES, AlgorithmOID, \
+    RSA_PSS_OID, ExtensionType, SignatureAlgorithm, HashAlgorithm, \
+    SignatureScheme
 from .utils.ecc import curve_name_to_hash_name
 from .errors import TLSIllegalParameterException
 
