@@ -638,9 +638,10 @@ def serverCmd(argv):
                           "credential must be present.")
     if dc_file:
         s = open(dc_file, "rb").read()
-        # if sys.version_info[0] >= 3:
-        #     s = str(s, 'utf-8')
-        # dc_bytes = dePem(s, "DELEGATED CREDENTIAL")
+        if os.path.splitext(dc_file)[1] == ".pem":
+            if sys.version_info[0] >= 3:
+                s = str(s, 'utf-8')
+            s = dePem(s, "DELEGATED CREDENTIAL")
         dc_parser = Parser(s)
         delegated_credential = DelegatedCredential().parse(dc_parser)
         certificate = cert_chain.x509List[0]
@@ -903,12 +904,10 @@ def credential_cmd(argv):
                                                                cert_chain,
                                                                dc_pub,
                                                                dc_sig_scheme)
-
     del_cred_bytes = delegated_credential.write()
     with open(dc_file, "w") as file:
-        dc_bytes_pem = pem(del_cred_bytes, "DELEGATED CREDENTIAL")
-        file.write(dc_bytes_pem)
-
+        del_cred_bytes = pem(del_cred_bytes, "DELEGATED CREDENTIAL")
+        file.write(del_cred_bytes)
     print("The delegated credential was successully written " \
           "into {0}".format(dc_file))
 
@@ -979,7 +978,7 @@ def _create_delegated_credential_object(
             dc_sig_scheme = getattr(SignatureScheme, curve)
 
     cert_bytes = cert_chain.x509List[0].bytes
-    valid_time = int(time.time()) + DC_VALID_TIME
+    valid_time = DC_VALID_TIME
     cred_raw_bytes = Credential.marshal(valid_time,
                                         dc_sig_scheme,
                                         dc_pub_byte)

@@ -9,7 +9,6 @@
 from ecdsa.keys import VerifyingKey
 
 from tlslite.errors import TLSDecryptionFailed
-from tlslite.handshakesettings import DC_VALID_TIME
 
 from .utils.asn1parser import ASN1Parser
 from .utils.cryptomath import *
@@ -490,17 +489,6 @@ class DelegatedCredential(object):
                 "The algorithm field MUST be of a type advertised by "
                 "the client in the signature_algorithms extension of "
                 "the ClientHello message.")
-        curr_time = time.time()
-
-        # if curr_time + self.cred.valid_time <= certificate.:
-        #     raise TLSIllegalParameterException(
-        #         "The Delegated Credential time validity has expired.")
-
-        # seven_days = DC_VALID_TIME
-        # if seven_days + curr_time < self.cred.valid_time:
-        #     raise TLSIllegalParameterException(
-        #         "The expiry time exceeds the current time "
-        #         "plus the maximum validity period (7 days by default)")
 
         dc_cert_verify_algorithm = self.cred.dc_cert_verify_algorithm
         if dc_cert_verify_algorithm != cert_verify.signatureAlgorithm:

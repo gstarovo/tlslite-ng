@@ -72,6 +72,7 @@ Implemented TLS features include:
 * (experimental) TACK extension
 * heartbeat extension and protocol
 * Record Size Limit extension
+* Delegated Credential for TLS
 
 2 Licenses/Acknowledgements
 ============================
@@ -615,6 +616,7 @@ tls.py server -k serverX509Key.pem -c serverX509Cert.pem --dc-key serverDelCredR
 ### Important Note
 
 According to RFC 5280, [Section 4.2.1.3](https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.3) and specifically [RFC 9260](https://datatracker.ietf.org/doc/rfc9345/) (Delegated Credentials), Section 4, the X.509 certificate used by the server to sign a delegated credential MUST contain the ```digitalSignature``` Key Usage extension. The ```credential``` tool and the delegated credential generation feature within the ```server``` tool are designed primarily for **testing and development purposes**. Hence, these tools do not perform strict validation to ensure that the provided main server certificate actually possesses the ```digitalSignature``` Key Usage extension.
+Similarly, while delegated credentials have a valid time option, it is not enforced. The current certificate implementation lacks time validation, a requirement that is also omitted for delegated credentials.
 
 
 

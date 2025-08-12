@@ -5,6 +5,7 @@ on:
     branches:
     - master
     - tlslite-ng-0.7
+    - delegated-credentials-testing
   pull_request:
 
 jobs:

@@ -3736,11 +3736,10 @@ def serverTestCmd(argv):
             scheme = SignatureScheme.toRepr(sig_alg)
 
             cert_bytes = cert_chain.x509List[0].bytes
-            valid_time = int(time.time()) + DC_VALID_TIME
-            cred_bytes = bytearray(numberToByteArray(valid_time) +
-                                numberToByteArray(dc_sig_alg[0]) +
-                                numberToByteArray(dc_sig_alg[1]) +
-                                dc_pub)
+            valid_time = DC_VALID_TIME
+            cred_bytes = Credential.marshal(valid_time,
+                                            dc_sig_alg,
+                                            dc_pub)
             cred = Credential(valid_time=valid_time,
                             dc_cert_verify_algorithm=dc_sig_alg,
                             subject_public_key_info=dc_pub,

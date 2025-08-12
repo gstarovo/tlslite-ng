@@ -3135,6 +3135,7 @@ class TLSConnection(TLSRecordLayer):
                 signature_scheme = dc_sig_scheme
                 scheme = SignatureScheme.toRepr(signature_scheme)
 
+            signature_scheme = getattr(SignatureScheme, scheme)
             self.serverSigAlg = signature_scheme
             signature_context = \
                 KeyExchange.calcVerifyBytes((3, 4), self._handshake_hash,
